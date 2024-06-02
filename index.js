@@ -4,14 +4,13 @@ const cors = require("cors");
 const bcrypt = require("bcrypt");
 const dbConnect = require("./connection/connection");
 const User = require("./models/user");
-const mongoose = require("mongoose");
 
 const app = express();
 
 app.use(express.json()); // else you won't be able to decode your req body
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "https://psynytwebshop.netlify.app"],
   })
 );
 
@@ -117,7 +116,7 @@ app.post("/signup", async (req, res) => {
 app.post("/wishlist/add", async (req, res) => {
   const { productId, userId } = req.body;
   // 66581f6db69c5fca75050709
-  console.log("Req body is for adding is: ", productId, userId);
+  console.log("Req body is for adding to wish list is: ", productId, userId);
   try {
     await dbConnect();
     const user = await User.findById(userId);
@@ -132,16 +131,25 @@ app.post("/wishlist/add", async (req, res) => {
 
     if (userWishlistProduct) {
       console.log("user exist and user is: ", userWishlistProduct);
-      res.status(200).json("already exists");
-      return;
+      return res.status(200).json("already exists");
     }
 
     if (!userWishlistProduct) {
       user.wishlist.push({ productId });
       await user.save();
+      console.log("new user wishlist: ", user.wishlist);
     }
 
-    res.status(200).json({ message: "done boiiss", wishlist: user.wishlist });
+    res.status(200).json({
+      message: "done boiiss",
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        cart: user.cart,
+        wishlist: user.wishlist,
+      },
+    });
   } catch (error) {
     res.status(500).send("Internal Server Error");
   }
@@ -149,7 +157,11 @@ app.post("/wishlist/add", async (req, res) => {
 
 app.post("/wishlist/remove", async (req, res) => {
   const { userId, productId } = req.body;
-
+  console.log(
+    "removing from database wishlist for productid: ",
+    productId,
+    userId
+  );
   try {
     await dbConnect();
     const user = await User.findById(userId);
@@ -159,19 +171,57 @@ app.post("/wishlist/remove", async (req, res) => {
     }
 
     if (user.wishlist.length === 0) {
-      return res.status(200).json({ msg: "no item in wishlist" });
+      return res.status(200).json({ msg: "No items in wishlist" });
     }
 
+    // Remove the product from the wishlist array
     user.wishlist = user.wishlist.filter(
-      (item) => item.productId !== productId
+      (item) => item.productId.toString() !== productId.toString()
     );
 
+    // Save the updated user document
     await user.save();
+    console.log("New user wishlist: ", user.wishlist);
 
-    res.json({ msg: "Item removed from wishlist", wishlist: user.wishlist });
+    res.json({
+      msg: "Item removed from wishlist",
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        cart: user.cart,
+        wishlist: user.wishlist,
+      },
+    });
   } catch (error) {
     console.error("Error:", error);
     res.status(500).send("Internal Server Error");
+  }
+});
+
+app.get("/userinfo", async (req, res) => {
+  const token = req.header("Authorization");
+  try {
+    await dbConnect();
+    const decoded = jwt.verify(token, jwtPassword);
+    const username = decoded.username;
+    const user = await User.findOne({ username });
+    console.log("user details are: ", user, username, decoded);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        cart: user.cart,
+        wishlist: user.wishlist,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
